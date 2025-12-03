@@ -4,6 +4,17 @@ const express = require('express');
 const app = express();
 app.use(express.text({ type: '*/*' }));  // the device posts plain-text, not JSON
 
+
+app.use((req, res, next) => {
+  console.log('--- New Request ---');
+  console.log('Method:', req.method);
+  console.log('URL:', req.url);
+  console.log('Headers:', req.headers);
+  if (req.body) console.log('Body:', req.body);
+  next();
+});
+
+
 app.post(['/iclock/cdata'], (req, res) => {
   const sn = req.query.SN;
   const table = req.query.table;
