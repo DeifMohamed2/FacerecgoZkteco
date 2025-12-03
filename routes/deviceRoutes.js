@@ -138,6 +138,9 @@ router.post('/cdata',
             verify: payload.Verify || null
         });
         
+        // Print user ID when student is attended
+        console.log(`[ATTENDANCE] User ID: ${empId || 'UNKNOWN'} - Device: ${sn} - Time: ${attendanceTime.toISOString()}`);
+        
         // Forward to webhooks asynchronously
         forwardToWebhooks('attendance', {
             id: attendance._id,
