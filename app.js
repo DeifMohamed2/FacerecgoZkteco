@@ -1,42 +1,28 @@
-// Simple ZKTeco Push Handler (Works with devices WITHOUT URL path field)
-// Run: node app.js
-// Install: npm install express body-parser
-
+// server.js
 const express = require('express');
-const bodyParser = require('body-parser');
 
 const app = express();
-app.use(bodyParser.urlencoded({ extended: false }));
-app.use(bodyParser.json());
+app.use(express.text({ type: '*/*' }));  // the device posts plain-text, not JSON
 
-// Function to handle PUSH data
-function handlePush(req, res) {
-  const data = req.body;
+app.post(['/iclock/cdata'], (req, res) => {
+  const sn = req.query.SN;
+  const table = req.query.table;
+  const c = req.query.c;
 
-  // Attendance log example fields:
-  // table = "ATTLOG", pin = user ID, name = user name, time = timestamp, status 0/1
-  if (data.table === 'ATTLOG') {
-    console.log('--- Attendance Event ---');
-    console.log('User ID:', data.pin);
-    console.log('Name:', data.name || 'Not sent by device');
-    console.log('Time:', data.time);
-
-    if (data.status === '0') console.log('Event: Check-In');
-    if (data.status === '1') console.log('Event: Check-Out');
-
-    console.log('------------------------');
+  if (table === 'ATTLOG' && c === 'log' && req.body) {
+    const lines = req.body.trim().split(/\\r?\\n/);
+    for (const l of lines) {
+      const logLine = `[${new Date().toISOString()}] SN=${sn} DATA=${l}\\n`;
+      console.log(logLine);
+    }
+    return res.send('OK');
   }
 
+  // you may implement USER data, PHOTO uploads, etc. as needed
   res.send('OK');
-}
+});
 
-// Device may POST to "/" OR "/iclock/cdata"
-app.post('/', handlePush);
-app.post('/iclock/cdata', handlePush);
-
-app.get('/', (req, res) => res.send('ZKTeco Push Server Running'));
-
-const PORT = 8090; // Use the same port you set in the device
+const PORT =  8090;
 app.listen(PORT, () => {
-  console.log(`Listening for ZKTeco PUSH on port ${PORT}`);
+  console.log(`ADMS listener running on port ${PORT}`);
 });
