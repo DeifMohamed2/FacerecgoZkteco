@@ -12,6 +12,34 @@ import { getWebhookLogs } from '../services/webhookService.js';
 
 const router = express.Router();
 
+/**
+ * POST /api/auth/login
+ * Simple login endpoint (for demo - implement proper auth in production)
+ * This route must be defined BEFORE authentication middleware
+ */
+router.post('/auth/login', async (req, res) => {
+    try {
+        const { username, password } = req.body;
+        
+        // TODO: Implement proper authentication
+        // For now, this is a placeholder
+        // In production, verify against database, use bcrypt for passwords, etc.
+        
+        if (!username || !password) {
+            return res.status(400).json({ error: 'Username and password required' });
+        }
+        
+        // Placeholder authentication
+        // Replace with actual user authentication
+        const token = generateToken({ userId: username, role: 'admin' });
+        
+        res.json({ token, user: { username, role: 'admin' } });
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Login failed' });
+    }
+});
+
 // All admin routes require authentication
 router.use(authenticateToken);
 router.use(adminLimiter);
@@ -561,33 +589,6 @@ router.delete('/webhooks/:id',
     } catch (error) {
         console.error('Webhook delete error:', error);
         res.status(500).json({ error: 'Failed to delete webhook' });
-    }
-});
-
-/**
- * POST /api/auth/login
- * Simple login endpoint (for demo - implement proper auth in production)
- */
-router.post('/auth/login', async (req, res) => {
-    try {
-        const { username, password } = req.body;
-        
-        // TODO: Implement proper authentication
-        // For now, this is a placeholder
-        // In production, verify against database, use bcrypt for passwords, etc.
-        
-        if (!username || !password) {
-            return res.status(400).json({ error: 'Username and password required' });
-        }
-        
-        // Placeholder authentication
-        // Replace with actual user authentication
-        const token = generateToken({ userId: username, role: 'admin' });
-        
-        res.json({ token, user: { username, role: 'admin' } });
-    } catch (error) {
-        console.error('Login error:', error);
-        res.status(500).json({ error: 'Login failed' });
     }
 });
 

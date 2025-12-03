@@ -3,7 +3,7 @@
 # Test examples for ZKTeco Integration API
 # Make sure the server is running on port 8090
 
-BASE_URL="http://localhost:8090"
+BASE_URL="https://patientqrcode.site"
 
 echo "=== Testing ZKTeco Integration API ==="
 echo ""
