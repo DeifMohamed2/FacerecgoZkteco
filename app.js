@@ -12,6 +12,12 @@ app.get("/", (req, res) => {
   res.send("ZKTeco ADMS Push Server is Running");
 });
 
+app.use((req, res, next) => {
+  console.log("Incoming:", req.method, req.url);
+  next();
+});
+
+
 // Device Test Connection (GET request)
 app.get("/iclock/cdata", (req, res) => {
   console.log("📡 Device Pinged Server (GET)");
@@ -26,6 +32,11 @@ app.post("/iclock/cdata", (req, res) => {
   // Save each event to a log file
     console.log(req.body);
   // MUST respond with OK or device retries
+  res.send("OK");
+});
+
+app.all("*", (req, res) => {
+  console.log("UNKNOWN PUSH:", req.method, req.url, req.body);
   res.send("OK");
 });
 
