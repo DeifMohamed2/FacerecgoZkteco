@@ -35,7 +35,8 @@ app.post("/iclock/cdata", (req, res) => {
   res.send("OK");
 });
 
-app.all("*", (req, res) => {
+// Catch-all route for any unmatched requests
+app.use((req, res) => {
   console.log("UNKNOWN PUSH:", req.method, req.url, req.body);
   res.send("OK");
 });
