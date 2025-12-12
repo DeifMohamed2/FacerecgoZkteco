@@ -1,177 +1,83 @@
-<%- include('partials/header', { title: 'Add Student' }) %>
-
-<div class="row mb-4">
-    <div class="col-md-12">
-        <h2 class="mb-4"><i class="bi bi-person-plus me-2"></i>Add Student</h2>
-    </div>
-</div>
-
-<div class="alert alert-info">
-    <h6><i class="bi bi-info-circle me-2"></i>Important: Two-Step Process</h6>
-    <ol class="mb-0">
-        <li><strong>Step 1:</strong> Add student here (creates user ID and pushes to devices)</li>
-        <li><strong>Step 2:</strong> Go to device and enroll fingerprint/face using the generated ID</li>
-    </ol>
-    <small class="text-muted">Biometric data must be enrolled directly on the device. See DEVICE_SETUP.md for details.</small>
-</div>
-
-<div class="row">
-    <div class="col-md-8">
-        <div class="card">
-            <div class="card-header">
-                <h5>Student Information</h5>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - Attendance System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>📚 Attendance System</h1>
             </div>
-            <div class="card-body">
-                <form id="addStudentForm">
-                    <div class="mb-3">
-                        <label for="name" class="form-label">Full Name <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" id="name" name="name" required>
-                    </div>
-                    <div class="mb-3">
-                        <label for="email" class="form-label">Email</label>
-                        <input type="email" class="form-control" id="email" name="email">
-                    </div>
-                    <div class="mb-3">
-                        <label for="phone" class="form-label">Phone</label>
-                        <input type="text" class="form-control" id="phone" name="phone">
-                    </div>
-                    <div class="mb-3">
-                        <label for="department" class="form-label">Department</label>
-                        <input type="text" class="form-control" id="department" name="department">
-                    </div>
-                    <button type="submit" class="btn btn-primary">
-                        <i class="bi bi-person-plus me-2"></i>Add Student
-                    </button>
-                </form>
-            </div>
+            <ul class="nav-menu">
+                <li><a href="/" class="nav-link">Dashboard</a></li>
+                <li><a href="/students" class="nav-link">Students</a></li>
+                <li><a href="/students/add" class="nav-link active">Add Student</a></li>
+                <li><a href="/attendance" class="nav-link">Attendance</a></li>
+            </ul>
         </div>
-    </div>
-    <div class="col-md-4">
-        <div class="card">
-            <div class="card-header">
-                <h5><i class="bi bi-router me-2"></i>Device Status</h5>
+    </nav>
+
+    <main class="main-content">
+        <div class="container">
+            <div class="page-header">
+                <h2>Add New Student</h2>
+                <p>Fill in the student details below</p>
             </div>
-            <div class="card-body">
-                <div id="deviceStatusContainer">
-                    <p class="text-muted">Loading...</p>
+
+            <div class="form-container">
+                <div class="card">
+                    <div class="card-body">
+                        <% if (error) { %>
+                            <div class="alert alert-error">
+                                <%= error %>
+                            </div>
+                        <% } %>
+
+                        <form method="POST" action="/students/add">
+                            <div class="form-group">
+                                <label for="name">Full Name *</label>
+                                <input type="text" id="name" name="name" class="form-control" required placeholder="Enter student's full name">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="email">Email</label>
+                                <input type="email" id="email" name="email" class="form-control" placeholder="student@example.com">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="phone">Phone Number</label>
+                                <input type="tel" id="phone" name="phone" class="form-control" placeholder="+1234567890">
+                            </div>
+
+                            <div class="form-group">
+                                <label for="department">Department</label>
+                                <input type="text" id="department" name="department" class="form-control" placeholder="e.g., Computer Science">
+                            </div>
+
+                            <div class="info-box">
+                                <strong>Note:</strong> A unique 4-digit ID will be automatically generated for this student. You'll need to add this ID to your face recognition device manually.
+                            </div>
+
+                            <div class="form-actions">
+                                <button type="submit" class="btn btn-primary">Add Student</button>
+                                <a href="/students" class="btn btn-secondary">Cancel</a>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             </div>
         </div>
-    </div>
-</div>
+    </main>
 
-<div class="row mt-4">
-    <div class="col-md-12">
-        <div id="resultMessage"></div>
-    </div>
-</div>
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Attendance Management System. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
 
-<script>
-    function updateDeviceStatus() {
-        fetch('/api/devices/status')
-            .then(res => res.json())
-            .then(devices => {
-                const container = document.getElementById('deviceStatusContainer');
-                
-                if (devices.length === 0) {
-                    container.innerHTML = '<p class="text-muted">No devices configured</p>';
-                    return;
-                }
-
-                let html = '';
-                devices.forEach(device => {
-                    const statusClass = device.connected ? 'status-connected' : 'status-disconnected';
-                    const statusIcon = device.connected ? 'bi-check-circle-fill' : 'bi-x-circle-fill';
-                    html += `
-                        <div class="mb-3 p-2 border rounded">
-                            <div class="d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>${device.name}</strong><br>
-                                    <small class="text-muted">${device.ip}:${device.port}</small><br>
-                                    <small class="text-muted">SN: ${device.sn || 'Not registered'}</small>
-                                </div>
-                                <span class="status-badge ${statusClass}">
-                                    <i class="bi ${statusIcon} me-1"></i>${device.status}
-                                </span>
-                            </div>
-                            ${device.lastSeen ? `<small class="text-muted">Last seen: ${new Date(device.lastSeen).toLocaleString()}</small>` : ''}
-                        </div>
-                    `;
-                });
-                container.innerHTML = html;
-            });
-    }
-
-    document.getElementById('addStudentForm').addEventListener('submit', async (e) => {
-        e.preventDefault();
-        
-        const formData = {
-            name: document.getElementById('name').value,
-            email: document.getElementById('email').value,
-            phone: document.getElementById('phone').value,
-            department: document.getElementById('department').value
-        };
-
-        const resultDiv = document.getElementById('resultMessage');
-        resultDiv.innerHTML = '<div class="alert alert-info"><i class="bi bi-hourglass-split me-2"></i>Adding student and pushing to devices...</div>';
-
-        try {
-            const response = await fetch('/api/students/add', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(formData)
-            });
-
-            const result = await response.json();
-
-            if (result.success) {
-                let html = `
-                    <div class="alert alert-success">
-                        <h5><i class="bi bi-check-circle me-2"></i>Student Added Successfully!</h5>
-                        <p class="mb-1"><strong>Student ID:</strong> <span class="badge bg-primary fs-5">${result.student.studentId}</span></p>
-                        <p class="mb-1"><strong>Name:</strong> ${result.student.name}</p>
-                        <hr>
-                        <h6 class="text-danger"><i class="bi bi-exclamation-triangle me-2"></i>IMPORTANT - Next Step:</h6>
-                        <p class="mb-1">Go to the device and enroll fingerprint/face:</p>
-                        <ol class="mb-0">
-                            <li>On device: Menu > User Management > User > Enroll</li>
-                            <li>Enter Student ID: <strong>${result.student.studentId}</strong></li>
-                            <li>Follow prompts to scan fingerprint or capture face</li>
-                        </ol>
-                `;
-
-                if (result.deviceResults && result.deviceResults.length > 0) {
-                    html += '<hr><h6 class="mt-3">Device Sync Status:</h6><ul>';
-                    result.deviceResults.forEach(deviceResult => {
-                        const icon = deviceResult.success ? 'bi-check-circle text-success' : 'bi-x-circle text-danger';
-                        html += `<li><i class="bi ${icon} me-2"></i><strong>${deviceResult.device}:</strong> ${deviceResult.message}</li>`;
-                    });
-                    html += '</ul>';
-                } else {
-                    html += '<hr><p class="text-warning mb-0"><i class="bi bi-exclamation-triangle me-2"></i>No devices connected. Student saved to database only.</p>';
-                }
-
-                html += '</div>';
-                resultDiv.innerHTML = html;
-
-                // Reset form
-                document.getElementById('addStudentForm').reset();
-                
-                // Scroll to result
-                resultDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-            } else {
-                resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>Error: ${result.error}</div>`;
-            }
-        } catch (error) {
-            resultDiv.innerHTML = `<div class="alert alert-danger"><i class="bi bi-exclamation-triangle me-2"></i>Error: ${error.message}</div>`;
-        }
-    });
-
-    // Update device status on load and every 5 seconds
-    updateDeviceStatus();
-    setInterval(updateDeviceStatus, 5000);
-</script>
-
-<%- include('partials/footer') %>

@@ -1,21 +1,26 @@
 {
-  "name": "facerecgo-attendance",
+  "name": "attendance-management-system",
   "version": "1.0.0",
-  "description": "Full attendance system with SensFace devices",
+  "description": "Attendance Management System with Face Recognition Device Integration",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
     "dev": "nodemon app.js"
   },
+  "keywords": [
+    "attendance",
+    "face-recognition",
+    "zkteco",
+    "express",
+    "mongodb"
+  ],
+  "author": "",
+  "license": "MIT",
   "dependencies": {
     "body-parser": "^2.2.1",
+    "ejs": "^3.1.10",
     "express": "^5.2.1",
-    "mongoose": "^8.0.3",
-    "ejs": "^3.1.9",
-    "axios": "^1.6.5",
-    "dotenv": "^16.3.1"
-  },
-  "devDependencies": {
-    "nodemon": "^3.0.2"
+    "method-override": "^3.0.0",
+    "mongoose": "^9.0.1"
   }
 }

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - Attendance System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>📚 Attendance System</h1>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="/" class="nav-link">Dashboard</a></li>
+                <li><a href="/students" class="nav-link">Students</a></li>
+                <li><a href="/students/add" class="nav-link">Add Student</a></li>
+                <li><a href="/attendance" class="nav-link">Attendance</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="container">
+            <div class="success-container">
+                <div class="success-icon">✅</div>
+                <h2>Student Added Successfully!</h2>
+                
+                <div class="student-id-display">
+                    <p>Student ID Generated:</p>
+                    <div class="id-box">
+                        <span class="large-id"><%= student.studentId %></span>
+                    </div>
+                </div>
+
+                <div class="student-details">
+                    <h3>Student Details:</h3>
+                    <table class="details-table">
+                        <tr>
+                            <td><strong>Name:</strong></td>
+                            <td><%= student.name %></td>
+                        </tr>
+                        <% if (student.email) { %>
+                        <tr>
+                            <td><strong>Email:</strong></td>
+                            <td><%= student.email %></td>
+                        </tr>
+                        <% } %>
+                        <% if (student.phone) { %>
+                        <tr>
+                            <td><strong>Phone:</strong></td>
+                            <td><%= student.phone %></td>
+                        </tr>
+                        <% } %>
+                        <% if (student.department) { %>
+                        <tr>
+                            <td><strong>Department:</strong></td>
+                            <td><%= student.department %></td>
+                        </tr>
+                        <% } %>
+                    </table>
+                </div>
+
+                <div class="alert alert-info">
+                    <h4>📝 Next Steps:</h4>
+                    <ol>
+                        <li>Write down or remember this ID: <strong><%= student.studentId %></strong></li>
+                        <li>Go to your face recognition device</li>
+                        <li>Add a new user with ID: <strong><%= student.studentId %></strong></li>
+                        <li>Register the student's face on the device</li>
+                        <li>When the student uses the device, attendance will be automatically recorded!</li>
+                    </ol>
+                </div>
+
+                <div class="action-buttons">
+                    <a href="/students/add" class="btn btn-primary">Add Another Student</a>
+                    <a href="/students" class="btn btn-secondary">View All Students</a>
+                    <a href="/" class="btn btn-secondary">Go to Dashboard</a>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Attendance Management System. All rights reserved.</p>
+        </div>
+    </footer>
+</body>
+</html>
+

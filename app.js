@@ -1,74 +1,274 @@
-// SensFace 2A / ZKTeco Attendance System
-// Full Application with EJS, Express, MongoDB
+// Attendance Management System with Face Recognition Device Integration
+// Node.js - Express - MongoDB - EJS
 
 const express = require("express");
 const bodyParser = require("body-parser");
+const mongoose = require("mongoose");
+const methodOverride = require("method-override");
 const path = require("path");
-const connectDB = require("./config/database");
-const { deviceStatus } = require("./config/devices");
-const Student = require("./models/Student");
-const Attendance = require("./models/Attendance");
-
-// Import routes
-const studentRoutes = require("./routes/studentRoutes");
-const attendanceRoutes = require("./routes/attendanceRoutes");
-const deviceRoutes = require("./routes/deviceRoutes");
 
 const app = express();
 const PORT = 8090;
 
-// Connect to MongoDB
-connectDB();
+// Import Models
+const Student = require("./models/Student");
+const Attendance = require("./models/Attendance");
 
-// View engine setup
+// MongoDB Connection
+mongoose.connect("mongodb+srv://deif:1qaz2wsx@3devway.aa4i6ga.mongodb.net/attendance_dbFacerego?retryWrites=true&w=majority&appName=Cluster0", {
+
+})
+.then(() => console.log("✅ MongoDB Connected Successfully"))
+.catch(err => console.error("❌ MongoDB Connection Error:", err));
+
+// Middleware Configuration
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
-
-// Middleware
+app.use(express.static(path.join(__dirname, "public")));
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(bodyParser.json());
 app.use(bodyParser.text({ type: 'text/plain', limit: '10mb' }));
-app.use(express.static(path.join(__dirname, "public")));
+app.use(methodOverride("_method"));
 
-// Logging middleware
+// Middleware to log POST requests from device
 app.use((req, res, next) => {
-    if (req.method === 'POST' && req.path.includes('iclock')) {
+    if (req.method === 'POST' && req.path.includes('/iclock/')) {
         console.log(`\n📨 ${req.method} ${req.path} - Content-Type: ${req.headers['content-type'] || 'none'}`);
     }
     next();
 });
 
-// ---------- ROUTES ----------
+// ---------- UTILITY FUNCTIONS ----------
+function logEvent(title, data) {
+    console.log("\n==============================");
+    console.log("📌 " + title);
+    console.log("==============================");
+    console.log(JSON.stringify(data, null, 2));
+    console.log("==============================\n");
+}
 
-// Home/Dashboard
+// Generate random 4-digit ID
+function generateStudentId() {
+    return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// Process attendance from device
+async function processAttendance(attendanceData) {
+    try {
+        const { UserID, DateTime, Status, Verify, DeviceSN } = attendanceData;
+        
+        // Find student by ID
+        const student = await Student.findOne({ studentId: UserID });
+        
+        if (!student) {
+            console.log(`⚠️ Student with ID ${UserID} not found in database`);
+            return;
+        }
+
+        // Create attendance record
+        const attendance = new Attendance({
+            studentId: UserID,
+            studentName: student.name,
+            dateTime: new Date(DateTime) || new Date(),
+            status: Status || 'Present',
+            verifyMethod: Verify || 'Face Recognition',
+            deviceSN: DeviceSN || 'Unknown'
+        });
+
+        await attendance.save();
+        console.log(`✅ Attendance recorded for ${student.name} (ID: ${UserID})`);
+        logEvent("📝 Attendance Saved", {
+            student: student.name,
+            id: UserID,
+            time: attendance.dateTime,
+            method: Verify
+        });
+    } catch (error) {
+        console.error("❌ Error processing attendance:", error);
+    }
+}
+
+// ---------- WEB ROUTES ----------
+
+// Home Page - Dashboard
 app.get("/", async (req, res) => {
-    res.render("dashboard");
+    try {
+        const totalStudents = await Student.countDocuments();
+        const todayStart = new Date();
+        todayStart.setHours(0, 0, 0, 0);
+        const todayEnd = new Date();
+        todayEnd.setHours(23, 59, 59, 999);
+        
+        const todayAttendance = await Attendance.countDocuments({
+            dateTime: { $gte: todayStart, $lte: todayEnd }
+        });
+
+        const recentAttendance = await Attendance.find()
+            .sort({ dateTime: -1 })
+            .limit(10);
+
+        res.render("index", {
+            title: "Dashboard",
+            totalStudents,
+            todayAttendance,
+            recentAttendance
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Server Error");
+    }
+});
+
+// Students List Page
+app.get("/students", async (req, res) => {
+    try {
+        const students = await Student.find().sort({ createdAt: -1 });
+        res.render("students", {
+            title: "Students",
+            students
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Server Error");
+    }
 });
 
 // Add Student Page
-app.get("/add-student", (req, res) => {
-    res.render("add-student");
+app.get("/students/add", (req, res) => {
+    res.render("add-student", {
+        title: "Add Student",
+        error: null
+    });
+});
+
+// Add Student - POST
+app.post("/students/add", async (req, res) => {
+    try {
+        let studentId;
+        let isUnique = false;
+        
+        // Generate unique 4-digit ID
+        while (!isUnique) {
+            studentId = generateStudentId();
+            const existing = await Student.findOne({ studentId });
+            if (!existing) isUnique = true;
+        }
+
+        const student = new Student({
+            studentId,
+            name: req.body.name,
+            email: req.body.email,
+            phone: req.body.phone,
+            department: req.body.department
+        });
+
+        await student.save();
+        console.log(`✅ New student added: ${student.name} (ID: ${studentId})`);
+        res.redirect(`/students/success/${studentId}`);
+    } catch (error) {
+        console.error(error);
+        res.render("add-student", {
+            title: "Add Student",
+            error: "Error adding student. Please try again."
+        });
+    }
+});
+
+// Student Added Success Page
+app.get("/students/success/:id", async (req, res) => {
+    try {
+        const student = await Student.findOne({ studentId: req.params.id });
+        if (!student) {
+            return res.redirect("/students");
+        }
+        res.render("student-success", {
+            title: "Student Added",
+            student
+        });
+    } catch (error) {
+        console.error(error);
+        res.redirect("/students");
+    }
+});
+
+// Delete Student
+app.delete("/students/:id", async (req, res) => {
+    try {
+        await Student.findOneAndDelete({ studentId: req.params.id });
+        await Attendance.deleteMany({ studentId: req.params.id });
+        res.redirect("/students");
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Server Error");
+    }
 });
 
 // Attendance Records Page
-app.get("/attendance", (req, res) => {
-    res.render("attendance");
+app.get("/attendance", async (req, res) => {
+    try {
+        const page = parseInt(req.query.page) || 1;
+        const limit = 50;
+        const skip = (page - 1) * limit;
+
+        const totalRecords = await Attendance.countDocuments();
+        const totalPages = Math.ceil(totalRecords / limit);
+
+        const attendanceRecords = await Attendance.find()
+            .sort({ dateTime: -1 })
+            .skip(skip)
+            .limit(limit);
+
+        res.render("attendance", {
+            title: "Attendance Records",
+            attendanceRecords,
+            currentPage: page,
+            totalPages
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Server Error");
+    }
 });
 
-// API Routes
-app.use("/api/students", studentRoutes);
-app.use("/api/attendance", attendanceRoutes);
-app.use("/api/devices", deviceRoutes);
+// Search Attendance by Student ID
+app.get("/attendance/search", async (req, res) => {
+    try {
+        const { studentId, date } = req.query;
+        let query = {};
 
-// ---------- DEVICE PUSH RECEIVER ----------
+        if (studentId) {
+            query.studentId = studentId;
+        }
 
-// Device ping (test if server is alive)
+        if (date) {
+            const searchDate = new Date(date);
+            const nextDay = new Date(searchDate);
+            nextDay.setDate(nextDay.getDate() + 1);
+            query.dateTime = { $gte: searchDate, $lt: nextDay };
+        }
+
+        const attendanceRecords = await Attendance.find(query)
+            .sort({ dateTime: -1 });
+
+        res.render("attendance", {
+            title: "Attendance Records",
+            attendanceRecords,
+            currentPage: 1,
+            totalPages: 1,
+            searchQuery: req.query
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Server Error");
+    }
+});
+
+// ---------- DEVICE INTEGRATION ROUTES ----------
+
+// Device Ping (Test if server is alive)
 app.get("/iclock/cdata", (req, res) => {
     const deviceSN = req.query.SN || 'unknown';
     const deviceType = req.query.DeviceType || 'unknown';
-    
-    // Update device status
-    updateDeviceConnection(deviceSN, true);
     
     if (deviceType === 'acc') {
         console.log(`⚠️ Device ${deviceSN} is in ACCESS CONTROL mode - needs T&A PUSH mode for attendance`);
@@ -79,12 +279,12 @@ app.get("/iclock/cdata", (req, res) => {
     return res.send("OK");
 });
 
-// Push attendance receiver
+// Push Attendance Receiver from Device
 app.post("/iclock/cdata", async (req, res) => {
-    const deviceSN = req.query.SN || 'unknown';
-    
-    // Update device connection status
-    updateDeviceConnection(deviceSN, true);
+    console.log("\n🔍 POST /iclock/cdata received");
+    console.log("Content-Type:", req.headers['content-type']);
+    console.log("Query params:", req.query);
+    console.log("Body type:", typeof req.body);
     
     const body = req.body;
 
@@ -93,266 +293,82 @@ app.post("/iclock/cdata", async (req, res) => {
         return res.send("OK");
     }
 
-    try {
-        // Handle text/CSV format (common ZKTeco format: PIN,DateTime,Status,Verify)
-        if (typeof body === 'string' && body.includes(',')) {
-            const lines = body.trim().split('\n');
-            
-            for (const line of lines) {
-                if (line.trim()) {
-                    const parts = line.split(',');
-                    if (parts.length >= 2) {
-                        await saveAttendanceRecord({
-                            UserID: parts[0]?.trim(),
-                            DateTime: parts[1]?.trim(),
-                            Status: parts[2]?.trim() || 'Check In',
-                            Verify: parts[3]?.trim() || 'Unknown',
-                            DeviceSN: deviceSN
-                        });
-                    }
+    // Handle text/CSV format (common ZKTeco format: PIN,DateTime,Status,Verify)
+    if (typeof body === 'string' && body.includes(',')) {
+        const lines = body.trim().split('\n');
+        for (const line of lines) {
+            if (line.trim()) {
+                const parts = line.split(',');
+                if (parts.length >= 2) {
+                    const attendanceData = {
+                        UserID: parts[0]?.trim(),
+                        DateTime: parts[1]?.trim(),
+                        Status: parts[2]?.trim() || 'Present',
+                        Verify: parts[3]?.trim() || 'Face Recognition',
+                        DeviceSN: req.query.SN || 'Unknown'
+                    };
+                    await processAttendance(attendanceData);
                 }
             }
-            return res.send("OK");
         }
+        return res.send("OK");
+    }
 
-        // Handle JSON format
-        if (typeof body === 'object') {
-            // Attendance log
-            if (body.table === "ATTLOG" || body.attlog || body.Record || body.PIN || body.UserID || body.user_id) {
-                await saveAttendanceRecord({
-                    UserID: body.PIN || body.UserID || body.pin || body.user_id || 'N/A',
-                    DateTime: body.DateTime || body.time || body.date || new Date().toISOString(),
-                    Status: body.Status || body.status || 'Check In',
-                    Verify: body.Verify || body.verify || body.verify_mode || 'Unknown',
-                    DeviceSN: deviceSN
-                });
-            }
-            // Operation log
-            else if (body.table === "OPERLOG") {
-                console.log("⚙️ Operation Log:", body);
-            }
-            // User event
-            else if (body.table === "USER") {
-                console.log("👤 User Event:", body);
-            }
-            // Device info
-            else if (body.SN && !body.PIN && !body.UserID) {
-                console.log(`✓ Device info from ${body.SN}`);
-            }
-            // Unknown format
-            else {
-                console.log("📦 Raw Data Received:", body);
-            }
+    // Handle JSON format
+    if (typeof body === 'object') {
+        if (body.table === "ATTLOG" || body.attlog || body.Record || body.PIN || body.UserID) {
+            const attendanceData = {
+                UserID: body.PIN || body.UserID || body.pin || body.user_id || 'N/A',
+                DateTime: body.DateTime || body.time || body.date || new Date().toISOString(),
+                Status: body.Status || body.status || 'Present',
+                Verify: body.Verify || body.verify || 'Face Recognition',
+                DeviceSN: body.SN || req.query.SN || 'Unknown'
+            };
+            await processAttendance(attendanceData);
+        } else if (body.table === "OPERLOG") {
+            logEvent("⚙️ Operation Log", body);
+        } else if (body.table === "USER") {
+            logEvent("👤 User Event", body);
+        } else if (body.SN && !body.PIN && !body.UserID) {
+            console.log(`✓ Device info from ${body.SN}`);
+        } else {
+            logEvent("📦 Raw Data Received", body);
         }
-    } catch (error) {
-        console.error("❌ Error processing attendance:", error);
     }
 
     res.send("OK");
 });
 
-// Device registration
+// Device Registration
 app.get("/iclock/registry", (req, res) => {
-    const deviceSN = req.query.SN || 'unknown';
-    updateDeviceConnection(deviceSN, true);
-    console.log(`📝 Device Registration (GET) from ${deviceSN}`);
+    console.log(`📝 Device Registration (GET) from ${req.query.SN || 'unknown'}`);
     res.send("OK");
 });
 
 app.post("/iclock/registry", (req, res) => {
-    const deviceSN = req.query.SN || req.body.SN || 'unknown';
-    updateDeviceConnection(deviceSN, true);
-    console.log(`📝 Device Registration (POST) from ${deviceSN}`);
+    logEvent("📝 Device Registration (POST)", {
+        body: req.body,
+        query: req.query
+    });
     res.send("OK");
 });
 
-// Push logs
+// Push Logs
 app.post("/iclock/push", (req, res) => {
-    const deviceSN = req.query.SN || req.body.SN || 'unknown';
-    updateDeviceConnection(deviceSN, true);
-    console.log(`🔥 PUSH Trigger Received from ${deviceSN}`);
+    logEvent("🔥 PUSH Trigger Received", req.body);
     res.send("OK");
 });
-
-// ---------- HELPER FUNCTIONS ----------
-
-// Update device connection status
-function updateDeviceConnection(deviceSN, connected) {
-    if (!deviceSN || deviceSN === 'unknown') {
-        return;
-    }
-
-    // Find device by SN
-    let found = false;
-    for (const [ip, device] of deviceStatus.entries()) {
-        if (device.sn === deviceSN) {
-            // Update existing device with matching SN
-            deviceStatus.set(ip, {
-                ...device,
-                connected: true,
-                lastSeen: new Date(),
-                status: 'Connected',
-                sn: deviceSN
-            });
-            found = true;
-            break;
-        }
-    }
-
-    // If not found by SN, update the first device without SN
-    if (!found) {
-        for (const [ip, device] of deviceStatus.entries()) {
-            if (!device.sn || device.sn === '') {
-                deviceStatus.set(ip, {
-                    ...device,
-                    connected: true,
-                    lastSeen: new Date(),
-                    status: 'Connected',
-                    sn: deviceSN
-                });
-                console.log(`✅ Device ${deviceSN} registered to IP ${ip}`);
-                break;
-            }
-        }
-    }
-}
-
-// Save attendance record to MongoDB
-async function saveAttendanceRecord(data) {
-    try {
-        const { UserID, DateTime, Status, Verify, DeviceSN } = data;
-
-        if (!UserID || UserID === 'N/A') {
-            console.log("⚠️ Skipping attendance record - no UserID");
-            return;
-        }
-
-        // Find student by ID
-        const student = await Student.findOne({ studentId: UserID });
-
-        if (!student) {
-            console.log(`⚠️ Student with ID ${UserID} not found in database`);
-            // Still save the record with the ID
-            const attendance = new Attendance({
-                studentId: UserID,
-                studentName: `Unknown (${UserID})`,
-                deviceSN: DeviceSN,
-                dateTime: parseDateTime(DateTime),
-                status: Status,
-                verifyMode: Verify,
-                rawData: data
-            });
-            await attendance.save();
-            console.log(`📥 Attendance saved (Unknown Student): ${UserID} at ${DateTime}`);
-            return;
-        }
-
-        // Check if record already exists (prevent duplicates)
-        const existingRecord = await Attendance.findOne({
-            studentId: UserID,
-            dateTime: parseDateTime(DateTime),
-            deviceSN: DeviceSN
-        });
-
-        if (existingRecord) {
-            console.log(`⚠️ Duplicate attendance record skipped: ${UserID} at ${DateTime}`);
-            return;
-        }
-
-        // Create attendance record
-        const attendance = new Attendance({
-            studentId: student.studentId,
-            studentName: student.name,
-            deviceSN: DeviceSN,
-            dateTime: parseDateTime(DateTime),
-            status: Status,
-            verifyMode: Verify,
-            rawData: data
-        });
-
-        await attendance.save();
-        console.log(`✅ Attendance saved: ${student.name} (${UserID}) at ${DateTime} - ${Status}`);
-    } catch (error) {
-        console.error("❌ Error saving attendance:", error);
-    }
-}
-
-// Parse date time from various formats
-function parseDateTime(dateTimeString) {
-    if (!dateTimeString) {
-        return new Date();
-    }
-
-    // Try parsing common formats
-    // Format: "2025-12-12 21:40:10" or "2025/12/12 21:40:10"
-    const formats = [
-        /(\d{4})[-\/](\d{2})[-\/](\d{2})\s+(\d{2}):(\d{2}):(\d{2})/,
-        /(\d{2})[-\/](\d{2})[-\/](\d{4})\s+(\d{2}):(\d{2}):(\d{2})/,
-    ];
-
-    for (const format of formats) {
-        const match = dateTimeString.match(format);
-        if (match) {
-            if (match[1].length === 4) {
-                // YYYY-MM-DD format
-                return new Date(
-                    parseInt(match[1]),
-                    parseInt(match[2]) - 1,
-                    parseInt(match[3]),
-                    parseInt(match[4]),
-                    parseInt(match[5]),
-                    parseInt(match[6])
-                );
-            } else {
-                // DD-MM-YYYY format
-                return new Date(
-                    parseInt(match[3]),
-                    parseInt(match[2]) - 1,
-                    parseInt(match[1]),
-                    parseInt(match[4]),
-                    parseInt(match[5]),
-                    parseInt(match[6])
-                );
-            }
-        }
-    }
-
-    // Fallback to Date constructor
-    const date = new Date(dateTimeString);
-    return isNaN(date.getTime()) ? new Date() : date;
-}
-
-// Periodic device status check - mark as disconnected if not seen for 60 seconds
-setInterval(() => {
-    const now = new Date();
-    const timeout = 60000; // 60 seconds
-
-    for (const [ip, device] of deviceStatus.entries()) {
-        if (device.lastSeen) {
-            const timeSinceLastSeen = now - new Date(device.lastSeen);
-            
-            if (timeSinceLastSeen > timeout && device.connected) {
-                // Mark as disconnected if not seen for more than 60 seconds
-                deviceStatus.set(ip, {
-                    ...device,
-                    connected: false,
-                    status: 'Disconnected'
-                });
-                console.log(`⚠️ Device ${device.name} (${ip}) marked as disconnected - no ping for ${Math.round(timeSinceLastSeen/1000)}s`);
-            }
-        }
-    }
-}, 30000); // Check every 30 seconds
 
 // ---------- START SERVER ----------
 app.listen(PORT, () => {
-    console.log(`\n🚀 Attendance System Running on PORT ${PORT}`);
+    console.log(`\n🚀 Attendance Management System Running on PORT ${PORT}`);
     console.log(`📱 Web Interface: http://localhost:${PORT}`);
-    console.log(`📡 Push Endpoint: http://localhost:${PORT}/iclock/cdata`);
-    console.log("\n⚠️  IMPORTANT: Configure your SensFace devices:");
-    console.log("   1. Menu > System > Device Type Setting");
-    console.log("   2. Change to 'T&A PUSH' mode");
-    console.log("   3. Set Push Server IP: Your server IP");
-    console.log("   4. Set Push Server Port: 8090");
-    console.log("   5. Restart the device\n");
+    console.log(`🔌 Device Push Endpoint: http://YOUR_IP:${PORT}/iclock/cdata`);
+    console.log("\nWaiting for device events and web requests...\n");
+    console.log("⚠️  DEVICE SETUP:");
+    console.log("   1. Add students via web interface");
+    console.log("   2. Note the 4-digit ID generated");
+    console.log("   3. Add this ID to your face recognition device manually");
+    console.log("   4. Configure device: Menu > System > Device Type = 'T&A PUSH'");
+    console.log("   5. Set Push Server IP and Port in device settings\n");
 });

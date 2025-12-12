@@ -5,29 +5,26 @@ const studentSchema = new mongoose.Schema({
         type: String,
         required: true,
         unique: true,
-        index: true
+        length: 4
     },
     name: {
         type: String,
-        required: true
+        required: true,
+        trim: true
     },
     email: {
         type: String,
-        default: ''
+        trim: true
     },
     phone: {
         type: String,
-        default: ''
+        trim: true
     },
     department: {
         type: String,
-        default: ''
+        trim: true
     },
     createdAt: {
-        type: Date,
-        default: Date.now
-    },
-    updatedAt: {
         type: Date,
         default: Date.now
     }
