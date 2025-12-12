@@ -1,23 +1,21 @@
-// =======================================================================================
-//  ZKTeco SenseFace 2A ADMS Professional Server - Single File Edition
-//  Author: ChatGPT
-//  File: app.js
-// =======================================================================================
+// ============================================================================
+// ZKTeco SenseFace 2A ADMS Professional Node.js Server  (Single File Version)
+// ============================================================================
 
 const express = require("express");
 const bodyParser = require("body-parser");
-
 const app = express();
+
 const PORT = 8090;
 
-// =======================================================================================
-// 1) UNIVERSAL PARSER (Key=Value pairs)
-// =======================================================================================
-function parseKeyValuePayload(payload = "") {
+// ============================================================================
+// UNIVERSAL PARSER  (Key=Value)
+// ============================================================================
+function parseKeyValue(payload = "") {
     const data = {};
-    const pairs = payload.split(/[,~\t\r\n]+/);
+    const parts = payload.split(/[,~\t\r\n]+/);
 
-    pairs.forEach(pair => {
+    parts.forEach(pair => {
         const [key, value] = pair.split("=");
         if (key && value !== undefined) data[key.trim()] = value.trim();
     });
@@ -25,25 +23,17 @@ function parseKeyValuePayload(payload = "") {
     return data;
 }
 
-function parseAttendance(payload) {
-    return parseKeyValuePayload(payload);
-}
-
-function parseRegistry(payload) {
-    return parseKeyValuePayload(payload);
-}
-
-// =======================================================================================
-// 2) MODELS (Structured Data Objects)
-// =======================================================================================
-
+// ============================================================================
+// MODELS (Structured Data)
+// ============================================================================
 class AttendanceLog {
     constructor(raw, sn) {
-        this.deviceSN = sn || null;
+        this.deviceSN = sn;
         this.userPin = raw.PIN || null;
         this.timestamp = raw.Time || null;
-        this.verifyMode = raw.Verified || raw.Verify || null;
+        this.verifyMode = raw.Verify || raw.Verified || null;
         this.status = raw.Status || null;
+
         this.raw = raw;
     }
 }
@@ -58,16 +48,17 @@ class DeviceInfo {
         this.ipAddress = raw.IPAddress || null;
         this.maxUsers = raw.MaxUserCount || null;
         this.maxLogs = raw.MaxAttLogCount || null;
+
         this.raw = raw;
     }
 }
 
-// =======================================================================================
-// 3) ADMS HANDLERS
-// =======================================================================================
+// ============================================================================
+// ADMS PROTOCOL HANDLERS
+// ============================================================================
 
-// Handshake response
-function buildHandshakeResponse(sn) {
+// Handshake creation
+function createHandshakeResponse(sn) {
     return [
         `GET OPTION FROM: ${sn}`,
         "ATTLOGStamp=0",
@@ -81,82 +72,83 @@ function buildHandshakeResponse(sn) {
     ].join("\r\n");
 }
 
+// Handle handshake
 function handleHandshake(req, res) {
     const sn = req.query.SN;
-    console.log(`🤝 Handshake received from SN=${sn}`);
+    console.log(`🤝 Handshake Received From: ${sn}`);
 
-    const response = buildHandshakeResponse(sn);
     res.set("Content-Type", "text/plain");
-    res.send(response);
+    res.send(createHandshakeResponse(sn));
 }
 
+// Handle device registry info
 function handleRegistry(req, res) {
     const sn = req.query.SN;
-    const parsed = parseRegistry(req.body);
+    const parsed = parseKeyValue(req.body);
+
     const device = new DeviceInfo(parsed, sn);
 
-    console.log("\n📟 DEVICE REGISTRY RECEIVED:");
+    console.log("\n📟 DEVICE REGISTRY:");
     console.log(JSON.stringify(device, null, 2));
 
     res.send("OK");
 }
 
+// Handle attendance push
 function handleAttendance(req, res) {
     const sn = req.query.SN;
     const table = req.query.table;
 
+    console.log("\n📩 RAW ATTENDANCE PAYLOAD:");
+    console.log(req.body);
+
     if (table !== "ATTLOG") {
-        console.log(`⚠️ Unknown table '${table}', ignoring.`);
+        console.log("⚠️ Not ATTLOG, Ignored.");
         return res.send("OK");
     }
 
-    const parsed = parseAttendance(req.body);
+    const parsed = parseKeyValue(req.body);
     const log = new AttendanceLog(parsed, sn);
 
-    console.log("\n🧾 NEW ATTENDANCE RECORD:");
+    console.log("\n🧾 FORMATTED ATTENDANCE LOG:");
     console.log(JSON.stringify(log, null, 2));
 
-    // TODO: Save to database later
+    // TODO: save to DB
 
     res.send("OK");
 }
 
+// Handle device command polling
 function handleCommandPolling(req, res) {
     res.send("OK");
 }
 
-// =======================================================================================
-// 4) MIDDLEWARE + ROUTES
-// =======================================================================================
-
+// ============================================================================
+// MIDDLEWARE + ROUTES
+// ============================================================================
 app.use(bodyParser.text({ type: "*/*" }));
 
-// Log all incoming requests
 app.use((req, res, next) => {
     console.log(`\n[${new Date().toISOString()}] → ${req.method} ${req.url}`);
     next();
 });
 
-// Handshake
+// ROUTES
 app.get("/iclock/cdata", handleHandshake);
 app.get("/iclock/cdata.aspx", handleHandshake);
 
-// Device registry
 app.post("/iclock/registry", handleRegistry);
 
-// Attendance log push
 app.post("/iclock/cdata", handleAttendance);
 
-// Command polling
 app.get("/iclock/getrequest", handleCommandPolling);
 
-// =======================================================================================
-// 5) START SERVER
-// =======================================================================================
-
+// ============================================================================
+// START SERVER
+// ============================================================================
 app.listen(PORT, "0.0.0.0", () => {
-    console.log("===========================================================");
-    console.log(`🚀 ZKTeco ADMS Server running on port ${PORT}`);
-    console.log("Waiting for SenseFace 2A device logs...");
-    console.log("===========================================================");
+    console.log("============================================================");
+    console.log(`🚀 ZKTeco ADMS Server Running on Port ${PORT}`);
+    console.log("📡 Waiting for SenseFace 2A Logs...");
+    console.log("============================================================");
 });
