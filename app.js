@@ -287,7 +287,7 @@ app.post("/iclock/cdata", async (req, res) => {
     console.log("Body type:", typeof req.body);
     
     const body = req.body;
-
+    console.log(body);
     if (!body || (typeof body === 'object' && Object.keys(body).length === 0)) {
         console.log("⚠️ Empty body received - device may not be configured for push");
         return res.send("OK");
