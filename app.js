@@ -1,68 +1,76 @@
-// server.js
 const express = require('express');
 const bodyParser = require('body-parser');
-
 const app = express();
-const PORT = 8090; // **CRITICAL: Must match the Server Port in device config (2.4)**
 
-// ZKTeco devices often send raw data, not JSON, so we use raw body parser
+// --- CONFIGURATION ---
+// Ensure this port matches what you put in the Senseface 2A device settings
+const PORT = 8090; 
+
+// --- MIDDLEWARE ---
+// ZKTeco devices often send data as plain text or strange formats, 
+// so we use raw/text parsers to capture everything.
 app.use(bodyParser.text({ type: '*/*' }));
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// --- ADMS PUSH Protocol Endpoint ---
-// The SenseFace 2A typically sends data to the '/iclock/cdata.aspx' path.
-app.post('/iclock/cdata.aspx', (req, res) => {
-    console.log('--- New PUSH Request Received ---');
+// --- LOGGING ---
+// This middleware logs EVERY request. If the device connects, you WILL see it here.
+app.use((req, res, next) => {
+    console.log(`\n[${new Date().toLocaleTimeString()}] INCOMING REQUEST:`);
+    console.log(`Method: ${req.method} | URL: ${req.url}`);
+    console.log(`Query Params:`, req.query);
+    console.log(`Body:`, req.body);
+    next();
+});
 
-    // 1. Log Request Metadata
-    // The device sends identification info in the query string.
-    const deviceSerial = req.query.SN; // SN = Serial Number of the device
-    const command = req.query.CMD;     // CMD = The command being sent (e.g., 'POST' or 'GET DATA')
+// --- ZKTECO ADMS ROUTES ---
+
+// 1. HANDSHAKE & CONFIGURATION (GET /iclock/cdata)
+// The device calls this to check server availability and sync settings.
+app.get('/iclock/cdata', (req, res) => {
+    // The device usually sends ?options=all&language=...
+    // We respond with the standard ADMS config string.
+    console.log('>> Handshake received. Sending config...');
     
-    console.log(`Device Serial (SN): ${deviceSerial}`);
-    console.log(`Command (CMD): ${command}`);
-    
-    // 2. Log Raw Body Data
-    // The attendance logs are in the body, often in a specific ZKTeco format.
-    // For attendance logs, it typically contains "C:Userid:VerifyType:Time:..."
-    const rawData = req.body;
-    console.log('Raw Data Body:');
-    console.log(rawData.toString().trim());
-    
-    // 3. Process the Data (THIS IS YOUR CORE LOGIC)
-    // You need to parse the rawData string (split by '\r\n') and save it to your database.
-    if (rawData && rawData.includes('C:')) {
-        const logs = rawData.toString().trim().split('\r\n').filter(line => line.startsWith('C:'));
+    // This response tells the device: "Server is Ready, sync every 60s"
+    res.send('GET OPTION FROM: SN\r\nATTLOGStamp=None\r\nOPERLOGStamp=None\r\nATTPHOTOStamp=None\r\nErrorDelay=30\r\nDelay=10\r\nTransTimes=00:00;14:05\r\nTransInterval=1\r\nTransFlag=1111000000\r\nRealtime=1\r\nEncrypt=0\r\n');
+});
+
+// 2. RECEIVE ATTENDANCE DATA (POST /iclock/cdata)
+// The device POSTs the attendance logs here.
+app.post('/iclock/cdata', (req, res) => {
+    const sn = req.query.SN;
+    const table = req.query.table; // usually 'ATTLOG'
+
+    if (table === 'ATTLOG') {
+        console.log(`>> RECEIVED ATTENDANCE LOGS FROM ${sn}`);
+        console.log('Data Content:', req.body);
         
-        logs.forEach(log => {
-            const parts = log.substring(2).split('\t'); // Remove "C:" and split by tab/space
-            
-            // The exact data structure can vary, but generally includes:
-            // parts[0]: User ID
-            // parts[1]: Punch Time (YYYY-MM-DD HH:mm:ss)
-            // parts[2]: Verify Type (1=Finger, 2=Face, 15=Card, etc.)
-            
-            if (parts.length >= 3) {
-                console.log(`\n🎉 ATTENDANCE LOG: User ID ${parts[0]} at ${parts[1]} (Type: ${parts[2]})`);
-                // **TODO: Add logic to save this log to your database**
-            }
-        });
+        // TODO: Parse 'req.body' and save to your database here.
+        // Format is usually: UserID, Date, VerifyMode, etc.
     }
 
-    // 4. Send Acknowledgment
-    // **CRITICAL:** The device expects a simple 'OK' response to confirm receipt.
-    // This tells the device to delete the log from its pending buffer.
-    res.set('Content-Type', 'text/plain');
-    res.send('OK\n'); 
+    // CRITICAL: You MUST reply "OK" or the device will keep sending the same data forever.
+    res.send('OK'); 
 });
 
-// A simple GET endpoint to confirm the server is running
-app.get('/', (req, res) => {
-    res.send('ZKTeco ADMS Server is running on port ' + PORT);
+// 3. COMMAND POLLING (GET /iclock/getrequest)
+// The device asks: "Do you have any commands for me?" (like Open Door, Delete User)
+app.get('/iclock/getrequest', (req, res) => {
+    // If no commands, send "OK"
+    res.send('OK');
 });
 
-// Start the server
+// 4. DEVICE COMMAND RESULTS (POST /iclock/devicecmd)
+// If you sent a command, the device reports the result here.
+app.post('/iclock/devicecmd', (req, res) => {
+    console.log('>> Device executed command:', req.body);
+    res.send('OK');
+});
+
+// --- START SERVER ---
 app.listen(PORT, () => {
-    console.log(`✅ ZKTeco ADMS Listener running on http://YOUR_SERVER_IP:${PORT}`);
-    console.log(`   - Server IP: Use this for 'Server Address' on the device.`);
-    console.log(`   - Server Port: ${PORT}`);
+    console.log(`-----------------------------------------------`);
+    console.log(`ZKTeco ADMS Server is running on Port: ${PORT}`);
+    console.log(`Waiting for Senseface 2A connection...`);
+    console.log(`-----------------------------------------------`);
 });
