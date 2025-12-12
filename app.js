@@ -2,69 +2,71 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const app = express();
 
-// --- CONFIGURATION ---
-// Ensure this port matches what you put in the Senseface 2A device settings
-const PORT = 8090; 
+const PORT = 8090; // Must match the port you opened in ufw and set on the device!
 
 // --- MIDDLEWARE ---
-// ZKTeco devices often send data as plain text or strange formats, 
-// so we use raw/text parsers to capture everything.
+// Use raw body parser to capture the specific plain text format ZKTeco uses
 app.use(bodyParser.text({ type: '*/*' }));
 app.use(bodyParser.urlencoded({ extended: true }));
 
 // --- LOGGING ---
-// This middleware logs EVERY request. If the device connects, you WILL see it here.
+// This logs ALL requests. If the device connects, you WILL see the log here.
 app.use((req, res, next) => {
-    console.log(`\n[${new Date().toLocaleTimeString()}] INCOMING REQUEST:`);
+    console.log(`\n[${new Date().toLocaleTimeString()}] 🟢 INCOMING REQUEST:`);
     console.log(`Method: ${req.method} | URL: ${req.url}`);
     console.log(`Query Params:`, req.query);
-    console.log(`Body:`, req.body);
+    if (req.body && req.body.length > 0) {
+        console.log(`Body (Payload): ${req.body}`);
+    } else {
+        console.log(`Body (Payload): (Empty)`);
+    }
     next();
 });
 
-// --- ZKTECO ADMS ROUTES ---
+// --- PUSH PROTOCOL HANDLERS ---
 
-// 1. HANDSHAKE & CONFIGURATION (GET /iclock/cdata)
-// The device calls this to check server availability and sync settings.
-app.get('/iclock/cdata', (req, res) => {
-    // The device usually sends ?options=all&language=...
-    // We respond with the standard ADMS config string.
-    console.log('>> Handshake received. Sending config...');
-    
-    // This response tells the device: "Server is Ready, sync every 60s"
-    res.send('GET OPTION FROM: SN\r\nATTLOGStamp=None\r\nOPERLOGStamp=None\r\nATTPHOTOStamp=None\r\nErrorDelay=30\r\nDelay=10\r\nTransTimes=00:00;14:05\r\nTransInterval=1\r\nTransFlag=1111000000\r\nRealtime=1\r\nEncrypt=0\r\n');
-});
+// Create a handler function for the Handshake to avoid repeating code
+const handleHandshake = (req, res) => {
+    const sn = req.query.SN || 'UNKNOWN';
+    console.log(`>> Handshake received from ${sn}. Sending config...`);
 
-// 2. RECEIVE ATTENDANCE DATA (POST /iclock/cdata)
-// The device POSTs the attendance logs here.
+    // The CRITICAL ADMS handshake response, joined by Windows-style line endings (\r\n)
+    const handshakeResponse = [
+        `GET OPTION FROM: ${sn}`,
+        'ATTLOGStamp=0',     // Start time for log retrieval (None/0/YYYY-MM-DD HH:MM:SS)
+        'OPERLOGStamp=0',
+        'Delay=10',          // Device waits 10 seconds before next poll
+        'TransTimes=00:00;14:05', // When device should sync
+        'TransInterval=1',   // Sync interval in minutes
+        'Realtime=1',        // Enable real-time data push
+        'Encrypt=0',         // No encryption
+        'OK'
+    ].join('\r\n');
+
+    res.set('Content-Type', 'text/plain');
+    res.send(handshakeResponse);
+};
+
+// 1. GET Request Handlers (Handshake)
+app.get('/iclock/cdata', handleHandshake);
+app.get('/iclock/cdata.aspx', handleHandshake); // Legacy path compatibility
+
+// 2. POST Request Handler (Attendance Data)
 app.post('/iclock/cdata', (req, res) => {
+    // This is where you process and save the attendance data (req.body)
+    const table = req.query.table; // Should be ATTLOG
     const sn = req.query.SN;
-    const table = req.query.table; // usually 'ATTLOG'
+    
+    console.log(`>> RECEIVED PUSH DATA: Table=${table} from SN=${sn}`);
 
-    if (table === 'ATTLOG') {
-        console.log(`>> RECEIVED ATTENDANCE LOGS FROM ${sn}`);
-        console.log('Data Content:', req.body);
-        
-        // TODO: Parse 'req.body' and save to your database here.
-        // Format is usually: UserID, Date, VerifyMode, etc.
-    }
-
-    // CRITICAL: You MUST reply "OK" or the device will keep sending the same data forever.
+    // CRITICAL: Acknowledge receipt to prevent device from re-sending the same data
     res.send('OK'); 
 });
 
-// 3. COMMAND POLLING (GET /iclock/getrequest)
-// The device asks: "Do you have any commands for me?" (like Open Door, Delete User)
+// 3. GET Request Handler (Command Polling)
 app.get('/iclock/getrequest', (req, res) => {
-    // If no commands, send "OK"
-    res.send('OK');
-});
-
-// 4. DEVICE COMMAND RESULTS (POST /iclock/devicecmd)
-// If you sent a command, the device reports the result here.
-app.post('/iclock/devicecmd', (req, res) => {
-    console.log('>> Device executed command:', req.body);
-    res.send('OK');
+    // If you have no commands to send to the device:
+    res.send('OK'); 
 });
 
 // --- START SERVER ---
