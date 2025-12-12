@@ -297,6 +297,7 @@ app.post("/iclock/cdata", async (req, res) => {
     if (typeof body === 'string' && body.includes(',')) {
         const lines = body.trim().split('\n');
         for (const line of lines) {
+            console.log(line);
             if (line.trim()) {
                 const parts = line.split(',');
                 if (parts.length >= 2) {
