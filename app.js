@@ -6,6 +6,14 @@ const bodyParser = require("body-parser");
 const app = express();
 const PORT = 8090; // <-- Your open firewall port
 
+// Middleware to log all incoming requests for debugging
+app.use((req, res, next) => {
+    if (req.method === 'POST') {
+        console.log(`\n📨 ${req.method} ${req.path} - Content-Type: ${req.headers['content-type'] || 'none'}`);
+    }
+    next();
+});
+
 // Handle different data formats from ZKTeco devices
 // Note: Order matters - more specific parsers first
 app.use(bodyParser.urlencoded({ extended: true }));
@@ -23,16 +31,33 @@ function logEvent(title, data) {
 
 // ---------- DEVICE PING (TEST IF SERVER IS ALIVE) ----------
 app.get("/iclock/cdata", (req, res) => {
-    // Suppress repeated ping logs - only log once per session
-    console.log(`✓ Device ping from ${req.query.SN || 'unknown'}`);
+    const deviceSN = req.query.SN || 'unknown';
+    const deviceType = req.query.DeviceType || 'unknown';
+    
+    // Log device type to help diagnose
+    if (deviceType === 'acc') {
+        console.log(`⚠️ Device ${deviceSN} is in ACCESS CONTROL mode - needs T&A PUSH mode for attendance`);
+    } else {
+        console.log(`✓ Device ping from ${deviceSN} (Type: ${deviceType})`);
+    }
+    
+    // Send response that enables push
     return res.send("OK");
 });
 
 // ---------- PUSH ATTENDANCE RECEIVER ----------
 app.post("/iclock/cdata", (req, res) => {
+    // Debug: Log ALL incoming POST requests
+    console.log("\n🔍 POST /iclock/cdata received");
+    console.log("Content-Type:", req.headers['content-type']);
+    console.log("Query params:", req.query);
+    console.log("Body type:", typeof req.body);
+    console.log("Body:", req.body);
+    
     const body = req.body;
 
-    if (!body) {
+    if (!body || (typeof body === 'object' && Object.keys(body).length === 0)) {
+        console.log("⚠️ Empty body received - device may not be configured for push");
         return res.send("OK");
     }
 
@@ -92,6 +117,20 @@ app.post("/iclock/cdata", (req, res) => {
     res.send("OK");
 });
 
+// ---------- DEVICE REGISTRATION ----------
+app.get("/iclock/registry", (req, res) => {
+    console.log(`📝 Device Registration (GET) from ${req.query.SN || 'unknown'}`);
+    res.send("OK");
+});
+
+app.post("/iclock/registry", (req, res) => {
+    logEvent("📝 Device Registration (POST)", {
+        body: req.body,
+        query: req.query
+    });
+    res.send("OK");
+});
+
 // ---------- PUSH LOGS ----------
 app.post("/iclock/push", (req, res) => {
     logEvent("🔥 PUSH Trigger Received", req.body);
@@ -102,4 +141,9 @@ app.post("/iclock/push", (req, res) => {
 app.listen(PORT, () => {
     console.log(`\n🚀 Push Server Running on PORT ${PORT}`);
     console.log("Waiting for device events...\n");
+    console.log("⚠️  IMPORTANT: If you're not receiving attendance data:");
+    console.log("   1. Go to device menu: Menu > System > Device Type Setting");
+    console.log("   2. Change Device Type from 'A&C PUSH' to 'T&A PUSH'");
+    console.log("   3. Restart the device");
+    console.log("   4. Configure Push Server IP and Port in device settings\n");
 });
