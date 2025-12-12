@@ -57,11 +57,47 @@ async function processAttendance(attendanceData) {
     try {
         const { UserID, DateTime, Status, Verify, DeviceSN } = attendanceData;
         
+        console.log(`\n🔍 Processing attendance for UserID: ${UserID}`);
+        console.log(`   DateTime: ${DateTime}`);
+        console.log(`   Status: ${Status}`);
+        console.log(`   Verify: ${Verify}`);
+        
         // Find student by ID
         const student = await Student.findOne({ studentId: UserID });
         
         if (!student) {
-            console.log(`⚠️ Student with ID ${UserID} not found in database`);
+            console.log(`❌ Student with ID ${UserID} not found in database`);
+            console.log(`   Please add this student first via the web interface`);
+            return;
+        }
+
+        console.log(`✅ Found student: ${student.name} (ID: ${UserID})`);
+
+        // Parse date - handle format "2025-12-12 23:02:39"
+        let parsedDate;
+        if (DateTime) {
+            // Try to parse the date string
+            parsedDate = new Date(DateTime);
+            // If parsing failed, use current date
+            if (isNaN(parsedDate.getTime())) {
+                console.log(`⚠️ Could not parse date: ${DateTime}, using current date`);
+                parsedDate = new Date();
+            }
+        } else {
+            parsedDate = new Date();
+        }
+
+        // Check if attendance already exists (same student, same minute)
+        const existingAttendance = await Attendance.findOne({
+            studentId: UserID,
+            dateTime: {
+                $gte: new Date(parsedDate.getTime() - 60000), // 1 minute before
+                $lte: new Date(parsedDate.getTime() + 60000)  // 1 minute after
+            }
+        });
+
+        if (existingAttendance) {
+            console.log(`⚠️ Attendance already recorded for ${student.name} at this time`);
             return;
         }
 
@@ -69,22 +105,28 @@ async function processAttendance(attendanceData) {
         const attendance = new Attendance({
             studentId: UserID,
             studentName: student.name,
-            dateTime: new Date(DateTime) || new Date(),
+            dateTime: parsedDate,
             status: Status || 'Present',
             verifyMethod: Verify || 'Face Recognition',
             deviceSN: DeviceSN || 'Unknown'
         });
 
         await attendance.save();
-        console.log(`✅ Attendance recorded for ${student.name} (ID: ${UserID})`);
+        console.log(`✅ Attendance recorded successfully for ${student.name} (ID: ${UserID})`);
+        console.log(`   Record ID: ${attendance._id}`);
+        console.log(`   Date/Time: ${attendance.dateTime}`);
+        
         logEvent("📝 Attendance Saved", {
             student: student.name,
             id: UserID,
             time: attendance.dateTime,
-            method: Verify
+            method: Verify,
+            status: Status
         });
     } catch (error) {
         console.error("❌ Error processing attendance:", error);
+        console.error("   Error details:", error.message);
+        console.error("   Stack:", error.stack);
     }
 }
 
@@ -287,29 +329,65 @@ app.post("/iclock/cdata", async (req, res) => {
     console.log("Body type:", typeof req.body);
     
     const body = req.body;
-    console.log(body);
+    console.log("Raw body:", body);
     if (!body || (typeof body === 'object' && Object.keys(body).length === 0)) {
         console.log("⚠️ Empty body received - device may not be configured for push");
         return res.send("OK");
     }
 
-    // Handle text/CSV format (common ZKTeco format: PIN,DateTime,Status,Verify)
-    if (typeof body === 'string' && body.includes(',')) {
+    // Handle text format - can be comma or tab separated
+    if (typeof body === 'string') {
         const lines = body.trim().split('\n');
         for (const line of lines) {
-            console.log(line);
-            if (line.trim()) {
-                const parts = line.split(',');
+            if (!line.trim()) continue;
+            
+            console.log("Processing line:", line);
+            
+            // Check if it's tab-separated (ZKTeco format: UserID\tDateTime\tStatus\tVerify\t...)
+            let parts;
+            if (line.includes('\t')) {
+                parts = line.split('\t');
+                console.log("Tab-separated format detected. Parts:", parts);
+            } 
+            // Check if it's comma-separated
+            else if (line.includes(',')) {
+                parts = line.split(',');
+                console.log("Comma-separated format detected. Parts:", parts);
+            } 
+            // Skip if neither format
+            else {
+                console.log("⚠️ Unknown format, skipping line:", line);
+                continue;
+            }
+            
                 if (parts.length >= 2) {
+                const UserID = parts[0]?.trim();
+                const DateTime = parts[1]?.trim();
+                const StatusCode = parts[2]?.trim() || '0';
+                const VerifyCode = parts[3]?.trim() || '1';
+                
+                // Convert status code to readable format
+                // 0 = Check In, 1 = Check Out (common ZKTeco codes)
+                const Status = StatusCode === '0' ? 'Check In' : StatusCode === '1' ? 'Check Out' : 'Present';
+                
+                // Convert verify code to readable format
+                // 0 = Password, 1 = Fingerprint, 15 = Face, etc.
+                let Verify = 'Face Recognition';
+                if (VerifyCode === '0') Verify = 'Password';
+                else if (VerifyCode === '1') Verify = 'Fingerprint';
+                else if (VerifyCode === '15') Verify = 'Face Recognition';
+                else if (VerifyCode === '4') Verify = 'RFID Card';
+                
                     const attendanceData = {
-                        UserID: parts[0]?.trim(),
-                        DateTime: parts[1]?.trim(),
-                        Status: parts[2]?.trim() || 'Present',
-                        Verify: parts[3]?.trim() || 'Face Recognition',
+                    UserID: UserID,
+                    DateTime: DateTime,
+                    Status: Status,
+                    Verify: Verify,
                         DeviceSN: req.query.SN || 'Unknown'
                     };
-                    await processAttendance(attendanceData);
-                }
+                
+                console.log("Parsed attendance data:", attendanceData);
+                await processAttendance(attendanceData);
             }
         }
         return res.send("OK");
