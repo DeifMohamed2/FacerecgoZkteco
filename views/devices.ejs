@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - Attendance System</title>
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="container">
+            <div class="nav-brand">
+                <h1>📚 Attendance System</h1>
+            </div>
+            <ul class="nav-menu">
+                <li><a href="/" class="nav-link">Dashboard</a></li>
+                <li><a href="/students" class="nav-link">Students</a></li>
+                <li><a href="/students/add" class="nav-link">Add Student</a></li>
+                <li><a href="/attendance" class="nav-link">Attendance</a></li>
+                <li><a href="/devices" class="nav-link active">Devices</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        <div class="container">
+            <div class="page-header">
+                <h2>Device Management</h2>
+                <p>Manage connected face recognition devices</p>
+            </div>
+
+            <div class="info-box">
+                <h3>📱 How It Works</h3>
+                <p><strong>Automatic Mode:</strong> When you add a student, the system automatically sends the user data to all active devices. You only need to register the face/biometric on the device.</p>
+                <p><strong>Manual Mode:</strong> Use the buttons below to manually push users to specific devices.</p>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>Connected Devices</h3>
+                </div>
+                <div class="card-body">
+                    <% if (devices.length > 0) { %>
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Device Name</th>
+                                    <th>Serial Number</th>
+                                    <th>IP Address</th>
+                                    <th>Last Seen</th>
+                                    <th>Status</th>
+                                    <th>Pending Commands</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <% devices.forEach(device => { %>
+                                    <tr>
+                                        <td><strong><%= device.deviceName %></strong></td>
+                                        <td><span class="badge"><%= device.serialNumber %></span></td>
+                                        <td><%= device.ipAddress || 'N/A' %></td>
+                                        <td><%= new Date(device.lastSeen).toLocaleString() %></td>
+                                        <td>
+                                            <% 
+                                            const timeDiff = Date.now() - new Date(device.lastSeen).getTime();
+                                            const isOnline = timeDiff < 300000; // 5 minutes
+                                            %>
+                                            <span class="status-badge <%= isOnline ? 'status-present' : 'status-absent' %>">
+                                                <%= isOnline ? 'Online' : 'Offline' %>
+                                            </span>
+                                        </td>
+                                        <td><%= device.pendingCommands ? device.pendingCommands.length : 0 %></td>
+                                        <td>
+                                            <button class="btn btn-primary btn-sm" onclick="showPushModal('<%= device.serialNumber %>')">
+                                                Push User
+                                            </button>
+                                            <button class="btn btn-secondary btn-sm" onclick="pushAllUsers('<%= device.serialNumber %>')">
+                                                Push All
+                                            </button>
+                                        </td>
+                                    </tr>
+                                <% }); %>
+                            </tbody>
+                        </table>
+                    <% } else { %>
+                        <div class="empty-state">
+                            <h3>No Devices Connected</h3>
+                            <p>Devices will appear here once they connect to the server</p>
+                            <div class="info-box" style="margin-top: 2rem;">
+                                <h4>Device Setup:</h4>
+                                <ol>
+                                    <li>Configure device push server to this server's IP and port 8090</li>
+                                    <li>Device will automatically register on first connection</li>
+                                    <li>Users added via web interface will be automatically pushed to devices</li>
+                                </ol>
+                            </div>
+                        </div>
+                    <% } %>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h3>📝 Instructions</h3>
+                </div>
+                <div class="card-body">
+                    <h4>Workflow:</h4>
+                    <ol style="line-height: 2;">
+                        <li><strong>Add Student:</strong> Go to "Add Student" page and create a new student</li>
+                        <li><strong>Automatic Push:</strong> The system automatically sends the user ID and name to all connected devices</li>
+                        <li><strong>Register Biometric:</strong> On the device, find the user by ID and register their face/fingerprint</li>
+                        <li><strong>Done!</strong> Student can now use the device for attendance</li>
+                    </ol>
+                    
+                    <h4 style="margin-top: 2rem;">Manual Push:</h4>
+                    <p>If automatic push fails or you need to resend users:</p>
+                    <ul style="line-height: 2;">
+                        <li><strong>Push User:</strong> Send a specific student to a device</li>
+                        <li><strong>Push All:</strong> Send all students to a device at once</li>
+                    </ul>
+                    
+                    <div class="alert alert-info" style="margin-top: 2rem;">
+                        <strong>Note:</strong> The system only sends the user ID and name to the device. You still need to register the biometric (face/fingerprint) on the device itself. This is a security feature - biometric data is never transmitted over the network.
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Push User Modal -->
+    <div id="pushModal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h3>Push User to Device</h3>
+            <form id="pushUserForm">
+                <input type="hidden" id="deviceSN" name="deviceSN">
+                <div class="form-group">
+                    <label for="studentId">Select Student:</label>
+                    <select id="studentId" name="studentId" class="form-control" required>
+                        <option value="">-- Select Student --</option>
+                        <% students.forEach(student => { %>
+                            <option value="<%= student.studentId %>">
+                                <%= student.studentId %> - <%= student.name %>
+                            </option>
+                        <% }); %>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary">Push to Device</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <p>&copy; 2025 Attendance Management System. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        function showPushModal(deviceSN) {
+            document.getElementById('deviceSN').value = deviceSN;
+            document.getElementById('pushModal').style.display = 'flex';
+        }
+
+        function closeModal() {
+            document.getElementById('pushModal').style.display = 'none';
+        }
+
+        document.getElementById('pushUserForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const formData = new FormData(e.target);
+            const data = Object.fromEntries(formData);
+
+            try {
+                const response = await fetch('/devices/push-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ ' + result.message + '\n\nThe user will be sent to the device on its next ping (within 1 minute).\nThen register the biometric on the device.');
+                    closeModal();
+                    location.reload();
+                } else {
+                    alert('❌ Error: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Error pushing user: ' + error.message);
+            }
+        });
+
+        async function pushAllUsers(deviceSN) {
+            if (!confirm('Push all students to this device? This may take a few minutes.')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/devices/push-all', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ deviceSN })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    alert('✅ ' + result.message + '\n\nUsers will be sent to the device gradually.\nThen register biometrics on the device for each user.');
+                    location.reload();
+                } else {
+                    alert('❌ Error: ' + result.error);
+                }
+            } catch (error) {
+                alert('❌ Error pushing users: ' + error.message);
+            }
+        }
+
+        // Close modal when clicking outside
+        window.onclick = function(event) {
+            const modal = document.getElementById('pushModal');
+            if (event.target == modal) {
+                closeModal();
+            }
+        }
+    </script>
+
+    <style>
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-content {
+            background-color: white;
+            padding: 2rem;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-content h3 {
+            margin-bottom: 1.5rem;
+            color: #333;
+        }
+
+        .status-absent {
+            background: #ef4444;
+            color: white;
+        }
+    </style>
+</body>
+</html>
+

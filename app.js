@@ -13,6 +13,7 @@ const PORT = 8090;
 // Import Models
 const Student = require("./models/Student");
 const Attendance = require("./models/Attendance");
+const Device = require("./models/Device");
 
 // MongoDB Connection
 mongoose.connect("mongodb+srv://deif:1qaz2wsx@3devway.aa4i6ga.mongodb.net/attendance_dbFacerego2?retryWrites=true&w=majority&appName=Cluster0", {
@@ -50,6 +51,58 @@ function logEvent(title, data) {
 // Generate random 4-digit ID
 function generateStudentId() {
     return Math.floor(1000 + Math.random() * 9000).toString();
+}
+
+// Queue command for device
+async function queueDeviceCommand(deviceSN, command, data) {
+    try {
+        let device = await Device.findOne({ serialNumber: deviceSN });
+        
+        if (!device) {
+            device = new Device({
+                serialNumber: deviceSN,
+                deviceName: `Device ${deviceSN}`
+            });
+        }
+        
+        device.pendingCommands.push({
+            command: command,
+            data: data,
+            createdAt: new Date()
+        });
+        
+        device.lastSeen = new Date();
+        await device.save();
+        
+        console.log(`📤 Command queued for device ${deviceSN}: ${command}`);
+        return true;
+    } catch (error) {
+        console.error("❌ Error queueing command:", error);
+        return false;
+    }
+}
+
+// Send user to all active devices
+async function sendUserToDevices(studentId, studentName) {
+    try {
+        const devices = await Device.find({ isActive: true });
+        
+        if (devices.length === 0) {
+            console.log("⚠️ No active devices found. User will be queued when device connects.");
+            return;
+        }
+        
+        // Format: DATA USER PIN=xxx\tName=xxx\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000
+        const userData = `PIN=${studentId}\tName=${studentName}\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000`;
+        
+        for (const device of devices) {
+            await queueDeviceCommand(device.serialNumber, 'USER', userData);
+        }
+        
+        console.log(`✅ User ${studentName} (${studentId}) queued for ${devices.length} device(s)`);
+    } catch (error) {
+        console.error("❌ Error sending user to devices:", error);
+    }
 }
 
 // Process attendance from device
@@ -206,6 +259,10 @@ app.post("/students/add", async (req, res) => {
 
         await student.save();
         console.log(`✅ New student added: ${student.name} (ID: ${studentId})`);
+        
+        // Automatically send user to all connected devices
+        await sendUserToDevices(studentId, student.name);
+        
         res.redirect(`/students/success/${studentId}`);
     } catch (error) {
         console.error(error);
@@ -272,6 +329,61 @@ app.get("/attendance", async (req, res) => {
     }
 });
 
+// Devices Management Page
+app.get("/devices", async (req, res) => {
+    try {
+        const devices = await Device.find().sort({ lastSeen: -1 });
+        const students = await Student.find().sort({ name: 1 });
+        
+        res.render("devices", {
+            title: "Devices",
+            devices,
+            students
+        });
+    } catch (error) {
+        console.error(error);
+        res.status(500).send("Server Error");
+    }
+});
+
+// Manually push user to device
+app.post("/devices/push-user", async (req, res) => {
+    try {
+        const { deviceSN, studentId } = req.body;
+        
+        const student = await Student.findOne({ studentId });
+        if (!student) {
+            return res.status(404).json({ error: "Student not found" });
+        }
+        
+        await queueDeviceCommand(deviceSN, 'USER', 
+            `PIN=${studentId}\tName=${student.name}\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000`);
+        
+        res.json({ success: true, message: `User ${student.name} queued for device ${deviceSN}` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
+// Push all students to a device
+app.post("/devices/push-all", async (req, res) => {
+    try {
+        const { deviceSN } = req.body;
+        const students = await Student.find();
+        
+        for (const student of students) {
+            await queueDeviceCommand(deviceSN, 'USER', 
+                `PIN=${student.studentId}\tName=${student.name}\tPri=0\tPasswd=\tCard=\tGrp=1\tTZ=0000000000000000`);
+        }
+        
+        res.json({ success: true, message: `${students.length} users queued for device ${deviceSN}` });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ error: "Server error" });
+    }
+});
+
 // Search Attendance by Student ID
 app.get("/attendance/search", async (req, res) => {
     try {
@@ -307,8 +419,8 @@ app.get("/attendance/search", async (req, res) => {
 
 // ---------- DEVICE INTEGRATION ROUTES ----------
 
-// Device Ping (Test if server is alive)
-app.get("/iclock/cdata", (req, res) => {
+// Device Ping (Test if server is alive) - Also sends pending commands
+app.get("/iclock/cdata", async (req, res) => {
     const deviceSN = req.query.SN || 'unknown';
     const deviceType = req.query.DeviceType || 'unknown';
     
@@ -316,6 +428,43 @@ app.get("/iclock/cdata", (req, res) => {
         console.log(`⚠️ Device ${deviceSN} is in ACCESS CONTROL mode - needs T&A PUSH mode for attendance`);
     } else {
         console.log(`✓ Device ping from ${deviceSN} (Type: ${deviceType})`);
+    }
+    
+    try {
+        // Update or create device record
+        let device = await Device.findOne({ serialNumber: deviceSN });
+        
+        if (!device) {
+            device = new Device({
+                serialNumber: deviceSN,
+                deviceName: `Device ${deviceSN}`,
+                ipAddress: req.ip
+            });
+            console.log(`📱 New device registered: ${deviceSN}`);
+        }
+        
+        device.lastSeen = new Date();
+        device.isActive = true;
+        
+        // Check if there are pending commands
+        if (device.pendingCommands && device.pendingCommands.length > 0) {
+            const command = device.pendingCommands[0];
+            console.log(`📤 Sending command to device ${deviceSN}: ${command.command}`);
+            
+            // Remove the command from queue
+            device.pendingCommands.shift();
+            await device.save();
+            
+            // Send command to device
+            // Format: C:ID:DATA COMMAND data\n
+            const response = `C:${Date.now()}:DATA ${command.command} ${command.data}\n`;
+            console.log(`Response to device: ${response}`);
+            return res.send(response);
+        }
+        
+        await device.save();
+    } catch (error) {
+        console.error("❌ Error handling device ping:", error);
     }
     
     return res.send("OK");

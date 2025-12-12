@@ -17,6 +17,7 @@
                 <li><a href="/students" class="nav-link">Students</a></li>
                 <li><a href="/students/add" class="nav-link">Add Student</a></li>
                 <li><a href="/attendance" class="nav-link">Attendance</a></li>
+                <li><a href="/devices" class="nav-link">Devices</a></li>
             </ul>
         </div>
     </nav>
@@ -65,12 +66,13 @@
                 <div class="alert alert-info">
                     <h4>📝 Next Steps:</h4>
                     <ol>
-                        <li>Write down or remember this ID: <strong><%= student.studentId %></strong></li>
+                        <li>✅ <strong>User ID and Name automatically sent to device!</strong></li>
                         <li>Go to your face recognition device</li>
-                        <li>Add a new user with ID: <strong><%= student.studentId %></strong></li>
-                        <li>Register the student's face on the device</li>
-                        <li>When the student uses the device, attendance will be automatically recorded!</li>
+                        <li>Find user with ID: <strong><%= student.studentId %></strong></li>
+                        <li>Register the student's face/fingerprint on the device</li>
+                        <li>Done! When the student uses the device, attendance will be automatically recorded!</li>
                     </ol>
+                    <p style="margin-top: 1rem;"><strong>Note:</strong> The device receives the user data within 1 minute. If the device is offline, the data will be sent when it reconnects.</p>
                 </div>
 
                 <div class="action-buttons">
