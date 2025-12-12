@@ -3,7 +3,7 @@
 const devices = [
     {
         name: 'Device 1',
-        ip: '192.168.1.8',
+        ip: '192.168.1.80',
         port: 80,
         username: 'admin',
         password: 'admin',

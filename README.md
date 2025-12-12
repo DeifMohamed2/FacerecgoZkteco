@@ -77,16 +77,26 @@ The application will start on:
 
 ## Usage
 
-### Adding a Student
+### Adding a Student (Two-Step Process)
 
+**Step 1: Add in Web Application**
 1. Navigate to **Add Student** page
 2. Fill in student information (Name is required)
 3. Click **Add Student**
 4. The system will:
    - Generate a unique 4-digit student ID
-   - Save student to MongoDB
-   - Automatically add student to all connected devices
+   - Save to MongoDB
+   - Push user data to all connected devices
    - Show device sync status
+
+**Step 2: Enroll Biometrics on Device (REQUIRED!)**
+1. Go to device: **Menu > User Management > User > Enroll**
+2. Enter the 4-digit student ID shown in web app
+3. Device will show student name (confirming user was pushed)
+4. Follow device prompts to scan fingerprint or capture face
+5. Save and exit
+
+⚠️ **Important:** Biometric data (fingerprint/face) CANNOT be uploaded remotely. It MUST be enrolled directly on the device. See `DEVICE_SETUP.md` for detailed instructions.
 
 ### Viewing Attendance
 

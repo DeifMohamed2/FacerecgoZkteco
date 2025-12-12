@@ -24,21 +24,19 @@ async function generateUniqueStudentId() {
     return id;
 }
 
-// Add student to a specific device
+// Add student to a specific device using ZKTeco PUSH protocol
 async function addStudentToDevice(student, device) {
     try {
-        const url = `http://${device.ip}:${device.port}/api/user/add`;
+        // SensFace devices use the iclock protocol for user management
+        // Format: DATA USER PIN=xxx\tName=xxx\tPri=0\tPasswd=\tCard=\tGrp=1
+        const userData = `DATA USER PIN=${student.studentId}\tName=${student.name}\tPri=0\tPasswd=\tCard=\tGrp=1\n`;
         
-        const studentData = {
-            user_id: student.studentId,
-            name: student.name,
-            privilege: 0, // Normal user
-            password: '',
-            card_no: '',
-            group: 1
-        };
+        const url = `http://${device.ip}:${device.port}/iclock/cdata?SN=${device.sn || 'device'}`;
 
-        const response = await axios.post(url, studentData, {
+        const response = await axios.post(url, userData, {
+            headers: {
+                'Content-Type': 'text/plain'
+            },
             auth: {
                 username: device.username,
                 password: device.password
@@ -46,16 +44,19 @@ async function addStudentToDevice(student, device) {
             timeout: 5000
         });
 
+        console.log(`✅ Student ${student.studentId} pushed to ${device.name}`);
+        
         return {
             success: true,
             device: device.name,
-            message: 'Student added successfully'
+            message: 'Student added to device successfully. Please enroll fingerprint/face on device.'
         };
     } catch (error) {
+        console.error(`❌ Failed to add student to ${device.name}:`, error.message);
         return {
             success: false,
             device: device.name,
-            message: error.response?.data?.message || error.message || 'Failed to add student'
+            message: error.response?.data || error.message || 'Failed to add student to device'
         };
     }
 }

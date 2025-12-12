@@ -178,17 +178,41 @@ app.post("/iclock/push", (req, res) => {
 
 // Update device connection status
 function updateDeviceConnection(deviceSN, connected) {
-    // Find device by SN or IP
+    if (!deviceSN || deviceSN === 'unknown') {
+        return;
+    }
+
+    // Find device by SN
+    let found = false;
     for (const [ip, device] of deviceStatus.entries()) {
-        if (device.sn === deviceSN || !device.sn) {
+        if (device.sn === deviceSN) {
+            // Update existing device with matching SN
             deviceStatus.set(ip, {
                 ...device,
-                connected: connected,
+                connected: true,
                 lastSeen: new Date(),
-                status: connected ? 'Connected' : 'Disconnected',
-                sn: deviceSN !== 'unknown' ? deviceSN : device.sn
+                status: 'Connected',
+                sn: deviceSN
             });
+            found = true;
             break;
+        }
+    }
+
+    // If not found by SN, update the first device without SN
+    if (!found) {
+        for (const [ip, device] of deviceStatus.entries()) {
+            if (!device.sn || device.sn === '') {
+                deviceStatus.set(ip, {
+                    ...device,
+                    connected: true,
+                    lastSeen: new Date(),
+                    status: 'Connected',
+                    sn: deviceSN
+                });
+                console.log(`✅ Device ${deviceSN} registered to IP ${ip}`);
+                break;
+            }
         }
     }
 }
@@ -298,41 +322,23 @@ function parseDateTime(dateTimeString) {
     return isNaN(date.getTime()) ? new Date() : date;
 }
 
-// Periodic device status check
-setInterval(async () => {
-    const { devices } = require("./config/devices");
-    const axios = require("axios");
+// Periodic device status check - mark as disconnected if not seen for 60 seconds
+setInterval(() => {
+    const now = new Date();
+    const timeout = 60000; // 60 seconds
 
-    for (const device of devices) {
-        try {
-            const url = `http://${device.ip}:${device.port}/api/device/info`;
-            await axios.get(url, {
-                auth: {
-                    username: device.username,
-                    password: device.password
-                },
-                timeout: 2000
-            });
-
-            // Device is reachable
-            const currentStatus = deviceStatus.get(device.ip);
-            if (currentStatus && !currentStatus.connected) {
-                deviceStatus.set(device.ip, {
-                    ...currentStatus,
-                    connected: true,
-                    lastSeen: new Date(),
-                    status: 'Connected'
-                });
-            }
-        } catch (error) {
-            // Device is not reachable
-            const currentStatus = deviceStatus.get(device.ip);
-            if (currentStatus && currentStatus.connected) {
-                deviceStatus.set(device.ip, {
-                    ...currentStatus,
+    for (const [ip, device] of deviceStatus.entries()) {
+        if (device.lastSeen) {
+            const timeSinceLastSeen = now - new Date(device.lastSeen);
+            
+            if (timeSinceLastSeen > timeout && device.connected) {
+                // Mark as disconnected if not seen for more than 60 seconds
+                deviceStatus.set(ip, {
+                    ...device,
                     connected: false,
                     status: 'Disconnected'
                 });
+                console.log(`⚠️ Device ${device.name} (${ip}) marked as disconnected - no ping for ${Math.round(timeSinceLastSeen/1000)}s`);
             }
         }
     }
