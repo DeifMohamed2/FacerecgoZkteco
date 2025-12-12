@@ -15,7 +15,7 @@ const Student = require("./models/Student");
 const Attendance = require("./models/Attendance");
 
 // MongoDB Connection
-mongoose.connect("mongodb+srv://deif:1qaz2wsx@3devway.aa4i6ga.mongodb.net/attendance_dbFacerego?retryWrites=true&w=majority&appName=Cluster0", {
+mongoose.connect("mongodb+srv://deif:1qaz2wsx@3devway.aa4i6ga.mongodb.net/attendance_dbFacerego2?retryWrites=true&w=majority&appName=Cluster0", {
 
 })
 .then(() => console.log("✅ MongoDB Connected Successfully"))
